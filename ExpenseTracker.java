@@ -35,32 +35,23 @@ public class ExpenseTracker {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
 
-            // Connect to the MySQL database
             String url = "jdbc:mysql://localhost:3306/newdatabase?useSSL=false&serverTimezone=UTC";
             String username = "root";
             String password = "root";
             conn = DriverManager.getConnection(url, username, password);
 
-            // Create tables if they do not exist
             Statement statement = conn.createStatement();
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS accounts (\n"
                     + " id INT AUTO_INCREMENT PRIMARY KEY,\n"
                     + " name VARCHAR(255)\n"
                     + ");\n"
-                    + "CREATE TABLE IF NOT EXISTS expenses (\n"
+                    + "CREATE TABLE IF NOT EXISTS transactions (\n"
                     + " id INT AUTO_INCREMENT PRIMARY KEY,\n"
                     + " account_id INT,\n"
+                    + " type VARCHAR(10),\n"
                     + " date DATE,\n"
                     + " description VARCHAR(255),\n"
                     + " amount DOUBLE,\n"
-                    + " FOREIGN KEY (account_id) REFERENCES accounts(id)\n"
-                    + ");\n"
-                    + "CREATE TABLE IF NOT EXISTS bills (\n"
-                    + " id INT AUTO_INCREMENT PRIMARY KEY,\n"
-                    + " account_id INT,\n"
-                    + " name VARCHAR(255),\n"
-                    + " due_date DATE,\n"
-                    + " priority INT,\n"
                     + " FOREIGN KEY (account_id) REFERENCES accounts(id)\n"
                     + ");\n"
             );
@@ -103,12 +94,12 @@ public class ExpenseTracker {
     public void loadData(DefaultTableModel model, int acId) {
         model.setRowCount(0);
         try {
-            String sql = "SELECT date,description,amount FROM expenses WHERE account_id = ?";
+            String sql = "SELECT type, date, description, amount FROM transactions WHERE account_id = ?";
             PreparedStatement ps = conn.prepareStatement(sql);
             ps.setInt(1, acId);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
-                Object[] row = {rs.getString("date"), rs.getString("description"), rs.getDouble("amount")};
+                Object[] row = {rs.getString("type"), rs.getString("date"), rs.getString("description"), rs.getDouble("amount")};
                 model.addRow(row);
             }
             ps.close();
@@ -127,7 +118,7 @@ public class ExpenseTracker {
             ResultSet accountResult = accountStmt.executeQuery();
             if (accountResult.next()) {
                 accountName = accountResult.getString("name");
-                String expenseSql = "SELECT SUM(amount) AS total FROM expenses WHERE account_id = ?";
+                String expenseSql = "SELECT SUM(amount) AS total FROM transactions WHERE account_id = ? AND type = 'expense'";
                 PreparedStatement expenseStmt = conn.prepareStatement(expenseSql);
                 expenseStmt.setInt(1, accountId);
                 ResultSet expenseResult = expenseStmt.executeQuery();
@@ -145,108 +136,41 @@ public class ExpenseTracker {
         return new String[]{accountName, String.valueOf(totalExpense)};
     }
 
-    private void addExpense(int accountId, String date, String description, double amount) {
+    private void addTransaction(int accountId, String type, String date, String description, double amount) {
         try {
-            String sql = "INSERT INTO expenses (account_id, date, description, amount) VALUES (?, ?, ?, ?)";
+            String sql = "INSERT INTO transactions (account_id, type, date, description, amount) VALUES (?, ?, ?, ?, ?)";
             PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setInt(1, accountId);
-            stmt.setString(2, date);
-            stmt.setString(3, description);
-            stmt.setDouble(4, amount);
+            stmt.setString(2, type);
+            stmt.setString(3, date);
+            stmt.setString(4, description);
+            stmt.setDouble(5, amount);
             stmt.executeUpdate();
             stmt.close();
-            JOptionPane.showMessageDialog(frame, "Expense added successfully to Account ID: " + accountId);
+            JOptionPane.showMessageDialog(frame, type.substring(0,1).toUpperCase() + type.substring(1) + " added successfully to Account ID: " + accountId);
         } catch (SQLException e) {
-            JOptionPane.showMessageDialog(frame, "Error adding expense: " + e.getMessage());
+            JOptionPane.showMessageDialog(frame, "Error adding transaction: " + e.getMessage());
         }
     }
 
-    private void deleteExpense(int accountId, String date, String description, double amount) {
+    private void deleteTransaction(int accountId, String type, String date, String description, double amount) {
         try {
-            String sql = "DELETE FROM expenses WHERE account_id = ? AND date = ? AND description = ? AND amount = ?";
+            String sql = "DELETE FROM transactions WHERE account_id = ? AND type = ? AND date = ? AND description = ? AND amount = ?";
             PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setInt(1, accountId);
-            stmt.setString(2, date);
-            stmt.setString(3, description);
-            stmt.setDouble(4, amount);
+            stmt.setString(2, type);
+            stmt.setString(3, date);
+            stmt.setString(4, description);
+            stmt.setDouble(5, amount);
             int affectedRows = stmt.executeUpdate();
             if (affectedRows > 0) {
-                JOptionPane.showMessageDialog(frame, "Expense deleted successfully.");
+                JOptionPane.showMessageDialog(frame, type.substring(0,1).toUpperCase() + type.substring(1) + " deleted successfully.");
             } else {
-                JOptionPane.showMessageDialog(frame, "No expense found matching the criteria.");
+                JOptionPane.showMessageDialog(frame, "No " + type + " found matching the criteria.");
             }
             stmt.close();
         } catch (SQLException e) {
-            JOptionPane.showMessageDialog(frame, "Error deleting expense: " + e.getMessage());
-        }
-    }
-
-    private void addBill(int accountId, String name, String dueDate, int priority) {
-        try {
-            String sql = "INSERT INTO bills (account_id, name, due_date, priority) VALUES (?, ?, ?, ?)";
-            PreparedStatement stmt = conn.prepareStatement(sql);
-            stmt.setInt(1, accountId);
-            stmt.setString(2, name);
-            stmt.setString(3, dueDate);
-            stmt.setInt(4, priority);
-            stmt.executeUpdate();
-            stmt.close();
-            JOptionPane.showMessageDialog(frame, "Bill added successfully to Account ID: " + accountId);
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(frame, "Error adding bill: " + e.getMessage());
-        }
-    }
-
-    public void loadBills(DefaultTableModel model, int acId) {
-        model.setRowCount(0);
-        try {
-            String sql = "SELECT name, due_date, priority FROM bills WHERE account_id = ? ORDER BY due_date ASC, priority DESC";
-            PreparedStatement ps = conn.prepareStatement(sql);
-            ps.setInt(1, acId);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                Object[] row = {rs.getString("name"), rs.getString("due_date"), rs.getInt("priority")};
-                model.addRow(row);
-            }
-            ps.close();
-        } catch (SQLException e) {
-            System.out.println(e);
-        }
-    }
-
-    private void deleteBill(int accountId, String name, String dueDate, int priority) {
-        try {
-            String sql = "DELETE FROM bills WHERE account_id = ? AND name = ? AND due_date = ? AND priority = ?";
-            PreparedStatement stmt = conn.prepareStatement(sql);
-            stmt.setInt(1, accountId);
-            stmt.setString(2, name);
-            stmt.setString(3, dueDate);
-            stmt.setInt(4, priority);
-            int affectedRows = stmt.executeUpdate();
-            if (affectedRows > 0) {
-                JOptionPane.showMessageDialog(frame, "Bill deleted successfully.");
-            } else {
-                JOptionPane.showMessageDialog(frame, "No bill found matching the criteria.");
-            }
-            stmt.close();
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(frame, "Error deleting bill: " + e.getMessage());
-        }
-    }
-
-    private void updateComboBox(JComboBox<String> cbx) {
-        cbx.removeAllItems();
-        try {
-            String sql = "SELECT * FROM accounts";
-            PreparedStatement ps = conn.prepareStatement(sql);
-            ResultSet rs = ps.executeQuery();
-            while (rs.next()) {
-                cbx.addItem(rs.getString("id") + "|" + rs.getString("name"));
-            }
-            rs.close();
-            ps.close();
-        } catch (SQLException e) {
-            JOptionPane.showMessageDialog(frame, "Error updating ComboBox: " + e.getMessage());
+            JOptionPane.showMessageDialog(frame, "Error deleting " + type + ": " + e.getMessage());
         }
     }
 
@@ -312,8 +236,8 @@ public class ExpenseTracker {
 
         table = new JTable();
         table.setModel(new DefaultTableModel(
-                new Object[][]{{null, null, null}},
-                new String[]{"Date", "Description", "Amount"}
+                new Object[][]{{null, null, null, null}},
+                new String[]{"Type", "Date", "Description", "Amount"}
         ));
         scrollPane.setViewportView(table);
 
@@ -349,65 +273,36 @@ public class ExpenseTracker {
         bottomPanel.add(amountField);
         amountField.setColumns(10);
 
-        JButton btnAddExpense = new JButton("Add Expense");
-        btnAddExpense.addActionListener(new ActionListener() {
+        JButton btnAddTransaction = new JButton("Add Transaction");
+        btnAddTransaction.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
-                addExpense(currentAccountId, dateField.getText(), descField.getText(), Double.parseDouble(amountField.getText()));
+                String type = JOptionPane.showInputDialog(frame, "Enter Type (expense or bill):");
+                addTransaction(currentAccountId, type, dateField.getText(), descField.getText(), Double.parseDouble(amountField.getText()));
                 loadData((DefaultTableModel) table.getModel(), currentAccountId);
             }
         });
-        btnAddExpense.setBounds(30, 39, 140, 25);
-        bottomPanel.add(btnAddExpense);
+        btnAddTransaction.setBounds(30, 39, 140, 25);
+        bottomPanel.add(btnAddTransaction);
 
-        JButton btnDeleteExpense = new JButton("Delete Expense");
-        btnDeleteExpense.addActionListener(new ActionListener() {
+        JButton btnDeleteTransaction = new JButton("Delete Transaction");
+        btnDeleteTransaction.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 int selectedRow = table.getSelectedRow();
                 if (selectedRow != -1) {
-                    String date = (String) table.getValueAt(selectedRow, 0);
-                    String description = (String) table.getValueAt(selectedRow, 1);
-                    double amount = Double.parseDouble(table.getValueAt(selectedRow, 2).toString()); // Retrieve amount as a double
-                    deleteExpense(currentAccountId, date, description, amount);
+                    String type = (String) table.getValueAt(selectedRow, 0);
+                    String date = (String) table.getValueAt(selectedRow, 1);
+                    String description = (String) table.getValueAt(selectedRow, 2);
+                    double amount = Double.parseDouble(table.getValueAt(selectedRow, 3).toString()); // Retrieve amount as a double
+                    deleteTransaction(currentAccountId, type, date, description, amount);
                     loadData((DefaultTableModel) table.getModel(), currentAccountId);
                 } else {
-                    JOptionPane.showMessageDialog(frame, "Please select an expense to delete.");
+                    JOptionPane.showMessageDialog(frame, "Please select a transaction to delete.");
                 }
             }
         });
 
-        btnDeleteExpense.setBounds(200, 39, 140, 25);
-        bottomPanel.add(btnDeleteExpense);
-
-        JButton btnAddBill = new JButton("Add Bill");
-        btnAddBill.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                String billName = JOptionPane.showInputDialog(frame, "Enter Bill Name:");
-                String dueDate = JOptionPane.showInputDialog(frame, "Enter Due Date (YYYY-MM-DD):");
-                int priority = Integer.parseInt(JOptionPane.showInputDialog(frame, "Enter Priority (1-High, 2-Medium, 3-Low):"));
-                addBill(currentAccountId, billName, dueDate, priority);
-                loadBills((DefaultTableModel) table.getModel(), currentAccountId);
-            }
-        });
-        btnAddBill.setBounds(370, 39, 140, 25);
-        bottomPanel.add(btnAddBill);
-
-        JButton btnDeleteBill = new JButton("Delete Bill");
-        btnDeleteBill.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                int selectedRow = table.getSelectedRow();
-                if (selectedRow != -1) {
-                    String name = (String) table.getValueAt(selectedRow, 0);
-                    String dueDate = (String) table.getValueAt(selectedRow, 1);
-                    int priority = (int) table.getValueAt(selectedRow, 2);
-                    deleteBill(currentAccountId, name, dueDate, priority);
-                    loadBills((DefaultTableModel) table.getModel(), currentAccountId);
-                } else {
-                    JOptionPane.showMessageDialog(frame, "Please select a bill to delete.");
-                }
-            }
-        });
-        btnDeleteBill.setBounds(520, 39, 140, 25);
-        bottomPanel.add(btnDeleteBill);
+        btnDeleteTransaction.setBounds(200, 39, 140, 25);
+        bottomPanel.add(btnDeleteTransaction);
 
         JLabel lblTotalExpense = new JLabel("Total Expense:");
         lblTotalExpense.setBounds(20, 75, 100, 15);
@@ -431,7 +326,6 @@ public class ExpenseTracker {
                 accountId = accountId.substring(0, accountId.indexOf('|'));
                 currentAccountId = Integer.valueOf(accountId);
                 loadData((DefaultTableModel) table.getModel(), currentAccountId);
-                loadBills((DefaultTableModel) table.getModel(), currentAccountId);
                 String[] details = getAccountDetails(currentAccountId);
                 lblTotalAmount.setText(details[1]);
                 lblAccountName.setText(details[0]);
@@ -439,5 +333,21 @@ public class ExpenseTracker {
         });
 
         updateComboBox(accBox);
+    }
+
+    private void updateComboBox(JComboBox<String> cbx) {
+        cbx.removeAllItems();
+        try {
+            String sql = "SELECT * FROM accounts";
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                cbx.addItem(rs.getString("id") + "|" + rs.getString("name"));
+            }
+            rs.close();
+            ps.close();
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(frame, "Error updating ComboBox: " + e.getMessage());
+        }
     }
 }
